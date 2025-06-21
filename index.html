@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>โปรแกรมจำลองวงแชร์ (Monte Carlo)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div class="container mx-auto max-w-4xl">
+        <div class="bg-white rounded-2xl shadow-xl p-6 md:p-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-center text-gray-800 mb-2">โปรแกรมจำลองวงแชร์</h1>
+            <p class="text-center text-gray-500 mb-8">Monte Carlo Simulation (แบบประมูล - เปียแชร์)</p>
+
+            <!-- Form for Simulation Parameters -->
+            <div id="simulation-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <div>
+                    <label for="numMembers" class="block text-sm font-medium text-gray-700 mb-1">จำนวนสมาชิก (คน)</label>
+                    <input type="number" id="numMembers" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" value="10">
+                </div>
+                <div>
+                    <label for="contribution" class="block text-sm font-medium text-gray-700 mb-1">เงินส่งต่องวด (บาท)</label>
+                    <input type="number" id="contribution" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" value="1000">
+                </div>
+                <div>
+                    <label for="defaultProbability" class="block text-sm font-medium text-gray-700 mb-1">โอกาสเบี้ยว (%)</label>
+                    <input type="number" id="defaultProbability" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" value="10">
+                </div>
+                <div>
+                    <label for="maxBidInterest" class="block text-sm font-medium text-gray-700 mb-1">ดอกเบี้ยประมูลสูงสุด (บาท)</label>
+                    <input type="number" id="maxBidInterest" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" value="200">
+                </div>
+                <div class="md:col-span-2 lg:col-span-1">
+                    <label for="numSimulations" class="block text-sm font-medium text-gray-700 mb-1">จำนวนการจำลอง (ครั้ง)</label>
+                    <input type="number" id="numSimulations" class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" value="20000">
+                </div>
+                 <div class="md:col-span-3 lg:col-span-1 flex items-end">
+                    <button id="run-simulation-btn" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md">
+                        เริ่มการคำนวณ
+                    </button>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results-container" class="mt-6 hidden">
+                <div id="loading-indicator" class="flex flex-col items-center justify-center p-8 text-center hidden">
+                    <div class="loader mb-4"></div>
+                    <p class="text-gray-600 font-semibold">กำลังคำนวณ... กรุณารอสักครู่</p>
+                    <p class="text-gray-500 text-sm">การจำลองจำนวนมากอาจใช้เวลาพอสมควร</p>
+                </div>
+                <div id="results-output"></div>
+            </div>
+
+        </div>
+        <footer class="text-center text-gray-500 text-sm mt-6">
+            <p>สร้างโดย คู่หูเขียนโค้ด เพื่อการศึกษาและจำลองสถานการณ์</p>
+        </footer>
+    </div>
+
+<script>
+// --- JavaScript Logic for Chit Fund Simulation ---
+
+const formatNumber = (num) => num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function runAuctionChitFundSimulation(params) {
+    const { NUM_MEMBERS, CONTRIBUTION, DEFAULT_PROBABILITY, MAX_BID_INTEREST } = params;
+    
+    let membersData = {};
+    for (let i = 0; i < NUM_MEMBERS; i++) {
+        membersData[i] = {
+            total_paid: 0, money_received: 0, interest_received: 0,
+            win_round: -1, has_defaulted: false
+        };
+    }
+
+    let availableToWin = Array.from({ length: NUM_MEMBERS }, (_, i) => i);
+    let any_defaults_happened = false;
+
+    for (let roundNumber = 0; roundNumber < NUM_MEMBERS; roundNumber++) {
+        let potThisRound = 0;
+        for (let memberId = 0; memberId < NUM_MEMBERS; memberId++) {
+            if (!membersData[memberId].has_defaulted) {
+                membersData[memberId].total_paid += CONTRIBUTION;
+                potThisRound += CONTRIBUTION;
+            }
+        }
+
+        let winnerId = -1;
+        let winningBid = 0;
+
+        if (availableToWin.length === 1) {
+            winnerId = availableToWin[0];
+        } else if (availableToWin.length > 1) {
+            const bids = {};
+            availableToWin.forEach(mid => { bids[mid] = Math.random() * MAX_BID_INTEREST; });
+            winnerId = Object.keys(bids).reduce((a, b) => bids[a] > bids[b] ? a : b);
+            winningBid = bids[winnerId];
+        }
+
+        if (winnerId !== -1) {
+            const winnerIdx = parseInt(winnerId);
+            membersData[winnerIdx].money_received = potThisRound - winningBid;
+            
+            if (winningBid > 0 && (NUM_MEMBERS - 1) > 0) {
+                const interestShare = winningBid / (NUM_MEMBERS - 1);
+                for (let memberId = 0; memberId < NUM_MEMBERS; memberId++) {
+                    if (memberId !== winnerIdx) membersData[memberId].interest_received += interestShare;
+                }
+            }
+            membersData[winnerIdx].win_round = roundNumber;
+            availableToWin = availableToWin.filter(id => id !== winnerIdx);
+        }
+
+        for (let memberId = 0; memberId < NUM_MEMBERS; memberId++) {
+            if (membersData[memberId].win_round !== -1 && !membersData[memberId].has_defaulted) {
+                if (Math.random() < DEFAULT_PROBABILITY) {
+                    membersData[memberId].has_defaulted = true;
+                    any_defaults_happened = true;
+                }
+            }
+        }
+    }
+
+    const final_results = {};
+    for (let memberId = 0; memberId < NUM_MEMBERS; memberId++) {
+        const data = membersData[memberId];
+        const netProfit = (data.money_received + data.interest_received) - data.total_paid;
+        if (data.win_round !== -1) {
+            final_results[data.win_round] = { profit: netProfit, has_defaulted: data.has_defaulted };
+        }
+    }
+    return { final_results, any_defaults_happened };
+}
+
+document.getElementById('run-simulation-btn').addEventListener('click', () => {
+    const params = {
+        NUM_MEMBERS: parseInt(document.getElementById('numMembers').value) || 10,
+        CONTRIBUTION: parseFloat(document.getElementById('contribution').value) || 1000,
+        DEFAULT_PROBABILITY: (parseFloat(document.getElementById('defaultProbability').value) || 0) / 100,
+        MAX_BID_INTEREST: parseFloat(document.getElementById('maxBidInterest').value) || 200,
+        NUM_SIMULATIONS: parseInt(document.getElementById('numSimulations').value) || 20000
+    };
+
+    const resultsContainer = document.getElementById('results-container');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const resultsOutput = document.getElementById('results-output');
+    
+    resultsContainer.classList.remove('hidden');
+    loadingIndicator.classList.remove('hidden');
+    resultsOutput.innerHTML = '';
+
+    setTimeout(() => {
+        let resultsByWinOrder = {};
+        let overallStats = { brokenSims: 0 };
+        for (let i = 0; i < params.NUM_MEMBERS; i++) {
+            resultsByWinOrder[i] = {
+                no_defaults_at_all: [],
+                some_defaults_winner_ok: [],
+                some_defaults_winner_defaults: []
+            };
+        }
+
+        for (let i = 0; i < params.NUM_SIMULATIONS; i++) {
+            const { final_results, any_defaults_happened } = runAuctionChitFundSimulation(params);
+
+            if (any_defaults_happened) {
+                overallStats.brokenSims++;
+                for (const winRound in final_results) {
+                    const { profit, has_defaulted } = final_results[winRound];
+                    if (has_defaulted) {
+                        resultsByWinOrder[winRound].some_defaults_winner_defaults.push(profit);
+                    } else {
+                        resultsByWinOrder[winRound].some_defaults_winner_ok.push(profit);
+                    }
+                }
+            } else {
+                for (const winRound in final_results) {
+                    const { profit } = final_results[winRound];
+                    resultsByWinOrder[winRound].no_defaults_at_all.push(profit);
+                }
+            }
+        }
+
+        loadingIndicator.classList.add('hidden');
+        displayResults(resultsByWinOrder, overallStats, params);
+    }, 100);
+});
+
+function displayResults(resultsData, overallStats, params) {
+    const resultsOutput = document.getElementById('results-output');
+    const unbrokenSims = params.NUM_SIMULATIONS - overallStats.brokenSims;
+
+    // --- NEW: Helper function for calculating stats ---
+    const calculateStats = (arr) => {
+        if (arr.length === 0) return null;
+        const sum = arr.reduce((a, b) => a + b, 0);
+        const avg = sum / arr.length;
+        const max = Math.max(...arr);
+        const min = Math.min(...arr);
+        const profitProb = (arr.filter(p => p > 0).length / arr.length) * 100;
+        return { avg, max, min, profitProb, count: arr.length };
+    };
+
+    let html = `
+        <div class="bg-gray-50 rounded-lg p-6 border">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">ผลการจำลอง</h2>
+            <div class="text-center text-sm text-gray-600 mb-6 border-b pb-4">
+                <span>สมาชิก: ${params.NUM_MEMBERS}</span> |
+                <span>เงินส่ง: ${formatNumber(params.CONTRIBUTION)}</span> |
+                <span>โอกาสเบี้ยว: ${(params.DEFAULT_PROBABILITY * 100).toFixed(1)}%</span> |
+                <span>จำลอง: ${params.NUM_SIMULATIONS.toLocaleString()} ครั้ง</span>
+            </div>
+
+            <!-- NEW: Overall Risk Summary -->
+            <div class="bg-white rounded-lg shadow-md p-4 mb-8 border border-gray-200">
+                <h3 class="text-xl font-bold text-center text-gray-800 mb-4">สรุปภาพรวมความเสี่ยง</h3>
+                <div class="flex justify-around text-center">
+                    <div>
+                        <p class="text-2xl font-bold text-green-600">${unbrokenSims.toLocaleString()}</p>
+                        <p class="text-sm text-gray-600">ครั้งที่ 'วงไม่แตก'</p>
+                    </div>
+                    <div>
+                        <p class="text-2xl font-bold text-red-600">${overallStats.brokenSims.toLocaleString()}</p>
+                        <p class="text-sm text-gray-600">ครั้งที่ 'วงแตก' (มีคนเบี้ยว)</p>
+                    </div>
+                     <div>
+                        <p class="text-2xl font-bold text-blue-600">${((unbrokenSims / params.NUM_SIMULATIONS) * 100).toFixed(1)}%</p>
+                        <p class="text-sm text-gray-600">โอกาสที่วงจะรอด</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-6">`;
+
+    for (const winRound in resultsData) {
+        const roundData = resultsData[winRound];
+        let roundName = `คนที่ ${parseInt(winRound) + 1}`;
+        if (parseInt(winRound) === 0) roundName += " (คนแรก)";
+        if (parseInt(winRound) === params.NUM_MEMBERS - 1) roundName += " (คนสุดท้าย)";
+
+        html += `<div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                    <h3 class="font-bold text-lg text-blue-700 mb-3">ผู้ที่ชนะเป็น ${roundName}</h3>`;
+        
+        // --- NEW DISPLAY LOGIC with more stats ---
+        const statsNoDefaults = calculateStats(roundData.no_defaults_at_all);
+        if (statsNoDefaults) {
+            html += `<div class="p-3 rounded-md bg-green-50 border border-green-200">
+                        <p class="text-gray-700 font-bold mb-2">กรณี 'วงไม่แตก' (${statsNoDefaults.count.toLocaleString()} ครั้ง)</p>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                            <span class="font-semibold">กำไรเฉลี่ย:</span> <span class="font-bold ${statsNoDefaults.avg >= 0 ? 'text-green-700' : 'text-red-700'}">${statsNoDefaults.avg >= 0 ? '+' : ''}${formatNumber(statsNoDefaults.avg)}</span>
+                            <span class="font-semibold">โอกาสกำไร:</span> <span class="font-bold text-blue-700">${statsNoDefaults.profitProb.toFixed(1)}%</span>
+                            <span class="font-semibold">กำไรสูงสุด:</span> <span class="text-green-700">+${formatNumber(statsNoDefaults.max)}</span>
+                            <span class="font-semibold">ขาดทุนสูงสุด:</span> <span class="text-red-700">${formatNumber(statsNoDefaults.min)}</span>
+                        </div>
+                     </div>`;
+        }
+
+        const statsSomeDefaults_WinnerOk = calculateStats(roundData.some_defaults_winner_ok);
+        const statsSomeDefaults_WinnerDefaults = calculateStats(roundData.some_defaults_winner_defaults);
+        
+        if (statsSomeDefaults_WinnerOk || statsSomeDefaults_WinnerDefaults) {
+             const totalBrokenCount = (statsSomeDefaults_WinnerOk?.count || 0) + (statsSomeDefaults_WinnerDefaults?.count || 0);
+             html += `<div class="mt-2 p-3 rounded-md bg-red-50 border border-red-200">
+                        <p class="text-gray-700 font-bold mb-2">กรณี 'วงมีคนเบี้ยว' (${totalBrokenCount.toLocaleString()} ครั้ง)</p>
+                        <div class="pl-4 space-y-3">`;
+
+            if (statsSomeDefaults_WinnerOk) {
+                html += `<div class="border-l-2 border-gray-300 pl-3">
+                            <p class="font-semibold text-gray-600 mb-1">└ เมื่อผู้ชนะ 'ไม่เบี้ยว' (${statsSomeDefaults_WinnerOk.count.toLocaleString()} ครั้ง):</p>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                                <span class="font-semibold">กำไรเฉลี่ย:</span> <span class="font-bold ${statsSomeDefaults_WinnerOk.avg >= 0 ? 'text-green-700' : 'text-red-700'}">${statsSomeDefaults_WinnerOk.avg >= 0 ? '+' : ''}${formatNumber(statsSomeDefaults_WinnerOk.avg)}</span>
+                                <span class="font-semibold">โอกาสกำไร:</span> <span class="font-bold text-blue-700">${statsSomeDefaults_WinnerOk.profitProb.toFixed(1)}%</span>
+                                <span class="font-semibold">กำไรสูงสุด:</span> <span class="text-green-700">+${formatNumber(statsSomeDefaults_WinnerOk.max)}</span>
+                                <span class="font-semibold">ขาดทุนสูงสุด:</span> <span class="text-red-700">${formatNumber(statsSomeDefaults_WinnerOk.min)}</span>
+                            </div>
+                         </div>`;
+            }
+            if (statsSomeDefaults_WinnerDefaults) {
+                html += `<div class="border-l-2 border-gray-300 pl-3">
+                           <p class="font-semibold text-gray-600 mb-1">└ เมื่อผู้ชนะ 'เบี้ยวด้วย' (${statsSomeDefaults_WinnerDefaults.count.toLocaleString()} ครั้ง):</p>
+                           <div class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                               <span class="font-semibold">กำไรเฉลี่ย:</span> <span class="font-bold text-green-700">+${formatNumber(statsSomeDefaults_WinnerDefaults.avg)}</span>
+                               <span class="font-semibold">โอกาสกำไร:</span> <span class="font-bold text-blue-700">${statsSomeDefaults_WinnerDefaults.profitProb.toFixed(1)}%</span>
+                               <span class="font-semibold">กำไรสูงสุด:</span> <span class="text-green-700">+${formatNumber(statsSomeDefaults_WinnerDefaults.max)}</span>
+                               <span class="font-semibold">ขาดทุนสูงสุด:</span> <span class="text-red-700">${formatNumber(statsSomeDefaults_WinnerDefaults.min)}</span>
+                           </div>
+                        </div>`;
+            }
+            html += `</div></div>`;
+        }
+        html += `</div>`;
+    }
+
+    html += `</div></div>`;
+    resultsOutput.innerHTML = html;
+}
+</script>
+</body>
+</html>
